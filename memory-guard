@@ -46,12 +46,29 @@ def full_pressure():
     return float(m.group(1)) if m else 0.0
 
 
-def available_mb():
-    info = dict(
-        (k, int(v.split()[0]))
+def meminfo_mb():
+    return dict(
+        (k, int(v.split()[0]) // 1024)
         for k, v in (line.split(":", 1) for line in read("/proc/meminfo").splitlines())
     )
-    return (info.get("MemAvailable", 0) + info.get("SwapFree", 0)) // 1024
+
+
+def available_mb():
+    info = meminfo_mb()
+    return info.get("MemAvailable", 0) + info.get("SwapFree", 0)
+
+
+def usage_summary():
+    """Two lines, markup for zenity: RAM and swap, used and left."""
+    info = meminfo_mb()
+    lines = []
+    for name, total, left in (("RAM", info.get("MemTotal", 0), info.get("MemAvailable", 0)),
+                              ("Swap", info.get("SwapTotal", 0), info.get("SwapFree", 0))):
+        if total:
+            used = total - left
+            lines.append(f"<b>{name}:</b> {fmt_mb(used)} used of {fmt_mb(total)} "
+                         f"({used * 100 // total}%)  ·  <b>{fmt_mb(left)} left</b>")
+    return "\n".join(lines)
 
 
 def omitted(path):
@@ -146,9 +163,9 @@ def ask(reason, dry_run=False):
         rows += ["TRUE" if i == 0 else "FALSE", fmt_mb(mb), name, unit]
     res = subprocess.run(
         ["zenity", "--list", "--checklist", "--title=Memory is running low",
-         f"--text={reason}\nIf nothing is closed, the system may close an app on its own.\n"
+         f"--text={usage_summary()}\n\n{reason}\nIf nothing is closed, the system may close an app on its own.\n"
          "Tick the apps to close:",
-         "--width=640", "--height=440", "--timeout=120",
+         "--width=640", "--height=540", "--timeout=120",
          "--ok-label=Close selected", "--cancel-label=Not now",
          "--column=Close", "--column=Memory", "--column=App", "--column=Unit",
          "--hide-column=4", "--print-column=4", "--separator=\n", *rows],
@@ -175,8 +192,7 @@ def watch():
         high_since = (high_since or now) if pressing else None
         if (high_since and now - high_since >= WARN_SECONDS
                 and (now >= snoozed_until or p >= SNOOZE_OVERRIDE)):
-            reason = (f"Memory pressure is {p:.0f}% and {fmt_mb(avail)} of RAM and swap "
-                      "is left.")
+            reason = f"Memory pressure is {p:.0f}%: apps are stalling while the system frees memory."
             closed = ask(reason)
             high_since = None
             # give a closed app time to exit before judging pressure again
@@ -187,7 +203,8 @@ def watch():
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     if arg == "--list":
-        print(f"pressure full avg10={full_pressure():.1f}%  available={fmt_mb(available_mb())}")
+        print(re.sub(r"</?b>", "", usage_summary()))
+        print(f"Pressure (full avg10): {full_pressure():.1f}%")
         for mb, unit, name in candidates():
             print(f"{fmt_mb(mb):>9}  {name}  [{unescape(unit)}]")
     elif arg == "--test":
