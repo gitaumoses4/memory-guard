@@ -8,7 +8,7 @@ lets you tick the ones to close, like macOS's "Force Quit Applications" window.
 Usage:
   memory-guard            run the watcher (normally via memory-guard.service)
   memory-guard --list     print the apps the dialog would offer, then exit
-  memory-guard --test     show the dialog now, then exit
+  memory-guard --test     show the dialog now (closes nothing), then exit
 """
 import os
 import re
@@ -135,7 +135,7 @@ def fmt_mb(mb):
     return f"{mb / 1024:.1f} GB" if mb >= 1024 else f"{mb} MB"
 
 
-def ask(reason):
+def ask(reason, dry_run=False):
     apps = candidates()
     if not apps:
         return
@@ -154,6 +154,11 @@ def ask(reason):
          "--hide-column=4", "--print-column=4", "--separator=\n", *rows],
         capture_output=True, text=True)
     chosen = [u for u in res.stdout.split("\n") if u.strip()] if res.returncode == 0 else []
+    if dry_run:
+        msg = "\n".join(unescape(u) for u in chosen) or "nothing"
+        subprocess.run(["zenity", "--info", "--title=Test run",
+                        f"--text=Test run, nothing was closed. Would have stopped:\n{msg}"])
+        return False
     for unit in chosen:
         # stop = SIGTERM, then SIGKILL after the unit's timeout, so apps can save.
         subprocess.run(["systemctl", "--user", "stop", "--no-block", unit])
@@ -186,7 +191,7 @@ def main():
         for mb, unit, name in candidates():
             print(f"{fmt_mb(mb):>9}  {name}  [{unescape(unit)}]")
     elif arg == "--test":
-        ask("Test run: nothing is wrong right now.")
+        ask("Test run: nothing is wrong right now, and nothing will be closed.", dry_run=True)
     elif arg in ("", "--watch"):
         watch()
     else:
