@@ -1,0 +1,16 @@
+[Unit]
+Description=Ask which apps to close when memory runs low
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/memory-guard
+Restart=always
+RestartSec=5
+# Lives with the desktop and must survive the very pressure it reports on.
+Slice=session.slice
+ManagedOOMPreference=omit
+MemoryMax=64M
+
+[Install]
+WantedBy=graphical-session.target
