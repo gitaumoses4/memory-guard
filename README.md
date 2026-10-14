@@ -42,5 +42,5 @@ Set these with `systemctl --user edit memory-guard` (`Environment=NAME=value`):
 
 ## Requirements
 
-GNOME on a systemd distro with cgroup v2 (Ubuntu 22.04+), `zenity`, `notify-send`,
+GNOME on a systemd distro with cgroup v2 (Ubuntu 22.04+), `zenity`, `notify-send`, `wmctrl` (keeps the dialog on top),
 Python 3.8+. No root needed.

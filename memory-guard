@@ -152,6 +152,23 @@ def fmt_mb(mb):
     return f"{mb / 1024:.1f} GB" if mb >= 1024 else f"{mb} MB"
 
 
+def pin_on_top(pid, timeout=5.0):
+    """Keep the dialog above other windows and on every workspace (X11, needs wmctrl)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            out = subprocess.run(["wmctrl", "-lp"], capture_output=True, text=True).stdout
+        except OSError:
+            return
+        for line in out.splitlines():
+            cols = line.split()
+            if len(cols) > 2 and cols[2] == str(pid):
+                subprocess.run(["wmctrl", "-i", "-r", cols[0], "-b", "add,above,sticky"])
+                subprocess.run(["wmctrl", "-i", "-a", cols[0]])
+                return
+        time.sleep(0.1)
+
+
 def ask(reason, dry_run=False):
     apps = candidates()
     if not apps:
@@ -161,7 +178,7 @@ def ask(reason, dry_run=False):
     rows = []
     for i, (mb, unit, name) in enumerate(apps):
         rows += ["TRUE" if i == 0 else "FALSE", fmt_mb(mb), name, unit]
-    res = subprocess.run(
+    proc = subprocess.Popen(
         ["zenity", "--list", "--checklist", "--title=Memory is running low",
          f"--text={usage_summary()}\n\n{reason}\nIf nothing is closed, the system may close an app on its own.\n"
          "Tick the apps to close:",
@@ -169,8 +186,10 @@ def ask(reason, dry_run=False):
          "--ok-label=Close selected", "--cancel-label=Not now",
          "--column=Close", "--column=Memory", "--column=App", "--column=Unit",
          "--hide-column=4", "--print-column=4", "--separator=\n", *rows],
-        capture_output=True, text=True)
-    chosen = [u for u in res.stdout.split("\n") if u.strip()] if res.returncode == 0 else []
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    pin_on_top(proc.pid)
+    out, _ = proc.communicate()
+    chosen = [u for u in out.split("\n") if u.strip()] if proc.returncode == 0 else []
     if dry_run:
         msg = "\n".join(unescape(u) for u in chosen) or "nothing"
         subprocess.run(["zenity", "--info", "--title=Test run",
